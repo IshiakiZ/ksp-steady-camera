@@ -3,7 +3,8 @@ for Kerbal Space Program 1.12.x
 
 The flight camera held steady while your craft spins: the game turns its flight camera a
 little more the faster the craft spins (its "wobble"), and in a fast spin the picture
-shakes. This holds that back.
+shakes. This holds that back. From 0.2.0 it also glides to what the camera follows next,
+where the game jumps, and keeps as much of the game's own camera shake as you like.
 
 INSTALL
   This mod needs Keystone, the base it stands on, which is a separate download:
@@ -16,11 +17,15 @@ INSTALL
 USE
   It is on as installed. Its switch ("Steady camera") and how much of the game's own
   wobble to keep ("Wobble kept": 0 none, 1 the game's own) are in the Keystone window: the
-  keystone button on the game's toolbar, or Option-K on a Mac and Alt-K elsewhere. Your
-  game's settings file is not changed: switch the mod off and the camera is the game's own.
+  keystone button on the game's toolbar, or Option-K on a Mac and Alt-K elsewhere. There too:
+  "Glide to what it follows next" (over 0.6 s, not over more than 150 m), and how much of
+  the game's camera shake to keep, outside and in the cockpit ("Engines' shake kept", "In
+  the cockpit": 1 the game's own, as installed). Your game's settings file is not changed:
+  switch the mod off and the camera is the game's own.
 
 WHERE IT WORKS
-  Made and tried on a Mac. On Windows it is the same code, with no shaders and nothing of
-  one system's in it, but nobody has run it there yet. Nobody has run it on Linux yet.
+  Made and tried on a Mac; 0.1.0 was tried on Windows 11 too (a craft spinning in orbit: the
+  wobble held back). What 0.2.0 adds has been run on the Mac only so far (it is the same
+  code there, with no shaders). Nobody has run it on Linux yet.
 
 Everything else: https://github.com/IshiakiZ/ksp-steady-camera
