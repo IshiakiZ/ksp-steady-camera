@@ -241,8 +241,14 @@ namespace SteadyCamera
         }
 
         static string heldSpin = "";
-        /// <summary>(Development build) keep the craft spinning so: "x y z" as for Spin, set again every physics step; "off" lets it be.</summary>
-        public static string HoldSpin(string arg) { heldSpin = arg == null || arg.Trim() == "off" ? "" : arg; return heldSpin.Length > 0 ? "held spinning: " + heldSpin : "let go"; }
+        static bool hover;
+        /// <summary>(Development build) keep the craft spinning so: "x y z" as for Spin, set again every physics step, and with "hover" after them held where it is besides (its fall taken away every step: a film of it that runs round, the ground not coming nearer); "off" lets it be.</summary>
+        public static string HoldSpin(string arg)
+        {
+            heldSpin = arg == null || arg.Trim() == "off" ? "" : arg;
+            hover = heldSpin.Contains("hover");
+            return heldSpin.Length > 0 ? "held spinning: " + heldSpin : "let go";
+        }
         static Vector3 drive;
         /// <summary>(Development build) drive the craft's spin through the physics: "x y z" radians a second squared about its own axes, given to every part each step (its joints then carry the load and flex, as under a real torque); "off".</summary>
         public static string Drive(string arg)
@@ -274,7 +280,7 @@ namespace SteadyCamera
             Transform r = v.ReferenceTransform;
             Vector3 w = r.right * V(0) + r.up * V(1) + r.forward * V(2);
             Vector3 com = (Vector3)v.CoMD;
-            Vector3 along = v.rootPart != null && v.rootPart.rb != null ? v.rootPart.rb.velocity - Vector3.Cross(v.rootPart.rb.angularVelocity, v.rootPart.rb.worldCenterOfMass - com) : Vector3.zero;
+            Vector3 along = !(hover && heldSpin.Length > 0) && v.rootPart != null && v.rootPart.rb != null ? v.rootPart.rb.velocity - Vector3.Cross(v.rootPart.rb.angularVelocity, v.rootPart.rb.worldCenterOfMass - com) : Vector3.zero;
             foreach (Part p in v.parts)
             {
                 if (p == null || p.rb == null) continue;

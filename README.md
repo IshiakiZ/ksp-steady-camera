@@ -2,7 +2,7 @@
 
 The flight camera held steady while your craft spins.
 
-![A craft spinning fast in orbit over Kerbin, the camera steady on it](src/SteadyCamera/img/steady-camera-spin.gif)
+![A rocket tumbling end over end 3 km over the coast by the space centre, the camera steady beside it](src/SteadyCamera/img/steady-camera-spin.gif)
 
 The game turns its flight camera a little more the faster the craft spins, about the spin's own axis (a "wobble",
 set by `FLT_CAMERA_WOBBLE` in the game's settings). In a fast spin that turn is large and swings about with the craft,
