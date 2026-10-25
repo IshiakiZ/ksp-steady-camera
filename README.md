@@ -19,7 +19,8 @@ It is on as installed. In the Keystone window (the keystone button on the game's
 Mac), under **Steady Camera**: the switch **Steady camera**, **Wobble kept** (0 none, 1 the game's own), and **Glide to
 what it follows next** (0.2.0): when the camera changes what it follows (a kerbal stepping out, another craft near by
 taken over, a part aimed at), the game puts it there at once and the picture jumps; with this on it glides there over
-0.6 s (not over more than 150 m). **Engines' shake kept** and **In the cockpit** (0.2.0): how much of the game's own
+0.6 s (not over more than 150 m); and (0.3.0) at a docking's latch, where the game swings the view round the craft, the
+view is kept where it was. **Engines' shake kept** and **In the cockpit** (0.2.0): how much of the game's own
 camera shake (its engines' rumble, a solid booster's most, and the air's buffeting) is kept, outside and in the cockpit
 view (1, as the game has it, as installed). The window also says how fast the craft is spinning, how far the game would have
 turned the view for it, and how far the last glide went.
@@ -30,7 +31,7 @@ turned the view for it, and how far the last glide went.
 
 ## Works on
 
-Mac: tried. Windows 11: 0.1.0 tried (a craft spinning in orbit: the wobble held back); what 0.2.0 adds, not yet.
+Mac: tried. Windows 11: 0.1.0 tried (a craft spinning in orbit: the wobble held back); the glide at a switch run there (2026-10-25, clean); 0.3.0's view kept at a docking's latch, the Mac only so far.
 Linux: never run.
 
 **More:** [how it works](https://github.com/IshiakiZ/ksp-steady-camera/wiki/How-it-works) and the rest of the [wiki](https://github.com/IshiakiZ/ksp-steady-camera/wiki).

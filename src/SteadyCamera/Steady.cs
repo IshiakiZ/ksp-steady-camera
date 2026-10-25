@@ -41,7 +41,7 @@ namespace SteadyCamera
     [KSPAddon(KSPAddon.Startup.Flight, false)]
     public sealed class Steady : MonoBehaviour
     {
-        public const string Version = "0.2.0";
+        public const string Version = "0.3.0";
 
         static Mod mod;
         static Toggle on, glide;
@@ -51,6 +51,8 @@ namespace SteadyCamera
         const float GlideTime = 0.6f, GlideMost = 150f;
         Transform followed;
         Vector3 lastPivot, glideOffset;
+        // (and the view's turn at the switch: the old look against the new, eased out with the place)
+        Quaternion lastLook = Quaternion.identity, glideTurn = Quaternion.identity;
         float glideAge = -1f;
 
         // (what the readout says: how fast the craft spins, and how far the game would have turned the view for it)
@@ -84,6 +86,7 @@ namespace SteadyCamera
             TimingManager.LateUpdateAdd(TimingManager.TimingStage.BetterLateThanNever, Late);
             TimingManager.UpdateAdd(TimingManager.TimingStage.ObscenelyEarly, HoldShake);
             GameEvents.OnGameSettingsWritten.Add(SettingsWritten);
+            GameEvents.onPartCouple.Add(Coupled);
             Camera.onPreCull += BeforeDrawing;
             Camera.onPostRender += AfterDrawing;
 #if DEV
@@ -96,10 +99,12 @@ namespace SteadyCamera
             TimingManager.LateUpdateRemove(TimingManager.TimingStage.BetterLateThanNever, Late);
             TimingManager.UpdateRemove(TimingManager.TimingStage.ObscenelyEarly, HoldShake);
             GameEvents.OnGameSettingsWritten.Remove(SettingsWritten);
+            GameEvents.onPartCouple.Remove(Coupled);
             GiveShake();
             Camera.onPreCull -= BeforeDrawing;
             Camera.onPostRender -= AfterDrawing;
-            if (moved != null) { moved.localPosition = movedWas; moved = null; }
+            if (moved != null) { moved.localPosition = movedWas; moved.localRotation = turnedWas; moved = null; }
+            if (skyCam != null) { skyCam.transform.localRotation = skyCamWas; skyCam = null; }
             if (FlightCamera.fetch != null) FlightCamera.fetch.cameraWobbleSensitivity = GameSettings.FLT_CAMERA_WOBBLE;
             if (mod != null && mod.Panel == (Action)Readout) mod.Panel = null;
         }
@@ -158,6 +163,8 @@ namespace SteadyCamera
         /// over a moment: only while each frame is drawn (BeforeDrawing, AfterDrawing), never moved for the game itself, which eases
         /// the camera towards its place every frame and would carry an offset left on it on and on (the first try, moving the pivot,
         /// put the camera under the launch pad when a kerbal stepped out: a kerbal's pivot is his own, and nothing sets it back).
+        /// Where the game also turns the view at the switch (going out on EVA, back aboard), the turn is eased out over the same
+        /// moment: until 2026-10-24 only the place was, and the picture turned at once and then slid across from the old place.
         /// </summary>
         void Late()
         {
@@ -165,11 +172,63 @@ namespace SteadyCamera
             FlightCamera cam = FlightCamera.fetch;
             if (cam == null) { followed = null; glideAge = -1f; return; }
             Vector3 at = cam.transform.position;
+            Quaternion look = cam.transform.rotation;
             Transform now = cam.Target;
+#if DEV
+            if (traceLeft > 0)
+            {
+                traceLeft--;
+                Vessel av = FlightGlobals.ActiveVessel;
+                Vector3 rel = now != null ? at - now.position : Vector3.zero;
+                traceSaid.Append(Time.frameCount).Append(' ').Append(now != null ? now.name + "#" + now.GetInstanceID() : "none").Append(" mode ").Append(cam.mode)
+                         .Append(" hdg ").Append((cam.camHdg * Mathf.Rad2Deg).ToString("F1")).Append(" pitch ").Append((cam.camPitch * Mathf.Rad2Deg).ToString("F1"))
+                         .Append(" off ").Append(rel.ToString("F1")).Append(" vessel ").Append(av != null ? av.vesselName + "#" + av.persistentId : "none")
+                         .Append(av != null && av.ReferenceTransform != null ? " ref " + av.ReferenceTransform.name : "").Append(glideAge >= 0f ? " GLIDING" : "").Append(Time.frameCount - coupledFrame <= 3 ? " COUPLED " + (Time.frameCount - coupledFrame) : "").Append(" kept ").Append(joinsKept);
+                // (near a coupling: every number the game's camera keeps, of the kinds that could hold a view)
+                if (Time.frameCount - coupledFrame <= 6)
+                    foreach (System.Reflection.FieldInfo f in typeof(FlightCamera).GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic))
+                        if (f.FieldType == typeof(float) || f.FieldType == typeof(Vector3) || f.FieldType == typeof(Quaternion) || f.FieldType == typeof(bool))
+                            traceSaid.Append(' ').Append(f.Name).Append('=').Append(f.GetValue(cam));
+                traceSaid.Append('\n');
+            }
+#endif
+            // (A docking's latch. As the two craft join, the game sets its camera's heading and pitch afresh against a frame of its own
+            // that it then eases round (FlightCamera's frame of reference: in orbit the orbit's, the joined craft's another), the camera
+            // following the same thing, and the view leapt round the craft from one frame to the next: 85 degrees in the docking filmed
+            // on 2026-10-25, the bridge's docking program's and the PC's alike; given back the old angles, it went on round with the
+            // frame. Kept where it was from what it follows: drawn from there this frame, and for a second and a half the game's angles
+            // made again from that place, in whatever frame it has, by its own SetCamCoordsFromPosition.)
+            if (on && cam.updateActive && now != null && now == followed && Time.frameCount - coupledFrame <= 3 && keepUntil < Time.unscaledTime
+                && (Mathf.Abs(Mathf.DeltaAngle(cam.camHdg * Mathf.Rad2Deg, lastHdg * Mathf.Rad2Deg)) > 5f || Mathf.Abs(Mathf.DeltaAngle(cam.camPitch * Mathf.Rad2Deg, lastPitch * Mathf.Rad2Deg)) > 5f))
+            {
+                keepOffset = lastOffset; keepLook = lastLook; keepUntil = Time.unscaledTime + 1.5f; keptTarget = now;
+                TurnSky(keepLook * Quaternion.Inverse(cam.transform.rotation));
+                cam.transform.position = now.position + keepOffset; cam.transform.rotation = keepLook;
+                at = cam.transform.position; look = keepLook;
+                joinsKept++;
+            }
+            if (keepUntil >= Time.unscaledTime && on && cam.updateActive && now != null && now == keptTarget)
+            {
+                // (and drawn from there each frame until the game's own placing, which eases round from the leap for a dozen frames
+                // after the angles are right, has come back to it)
+                Vector3 want = now.position + keepOffset;
+                try { cam.SetCamCoordsFromPosition(want); }
+                catch (Exception) { keepUntil = -1f; }
+                if ((at - want).sqrMagnitude > 0.0025f) { TurnSky(keepLook * Quaternion.Inverse(cam.transform.rotation)); cam.transform.position = want; cam.transform.rotation = keepLook; at = want; look = keepLook; }
+                else if (Time.frameCount - coupledFrame > 3) keepUntil = -1f;
+            }
+            else keepUntil = -1f;
             if (now != followed)
             {
                 Vector3 jump = lastPivot - at;
-                if (followed != null && on && glide && jump.magnitude > 0.05f && jump.magnitude < GlideMost) { glideOffset = jump; glideAge = 0f; lastGlide = jump.magnitude; }
+                float turned = Quaternion.Angle(lastLook, look);
+                if (followed != null && on && glide && (jump.magnitude > 0.05f || turned > 0.5f) && jump.magnitude < GlideMost)
+                {
+                    glideOffset = jump;
+                    // (what, put before the new look, gives the old one)
+                    glideTurn = lastLook * Quaternion.Inverse(look);
+                    glideAge = 0f; lastGlide = jump.magnitude; lastGlideTurn = turned;
+                }
                 followed = now;
             }
             else if (glideAge >= 0f)
@@ -177,28 +236,63 @@ namespace SteadyCamera
                 glideAge += Mathf.Min(Time.unscaledDeltaTime, 0.1f);
                 if (glideAge >= GlideTime || !on || !glide) glideAge = -1f;
             }
-            lastPivot = at;
+            lastPivot = at; lastLook = look;
+            lastHdg = cam.camHdg; lastPitch = cam.camPitch; lastOffset = now != null ? at - now.position : Vector3.zero;
+        }
+
+        // (the frame two parts were last joined, as at a docking's latch: see Late)
+        int coupledFrame = -100, joinsKept;
+        float lastHdg, lastPitch, keepUntil = -1f;
+        Vector3 lastOffset, keepOffset;
+        Quaternion keepLook = Quaternion.identity;
+        Transform keptTarget;
+        void Coupled(GameEvents.FromToAction<Part, Part> a) { coupledFrame = Time.frameCount; }
+
+        /// <summary>The cameras of the stars and of the far scene in scaled space turned as the flight camera is put back: they took its
+        /// look in their own LateUpdate, before this, and drew the planet from the leap's way round (a flash of most of the picture).</summary>
+        static void TurnSky(Quaternion by)
+        {
+            foreach (Camera c in Camera.allCameras)
+                if (c != null && (Names.Is(c, "GalaxyCamera") || Names.Is(c, "Camera ScaledSpace"))) c.transform.rotation = by * c.transform.rotation;
         }
 
         // (the camera as the game placed it, while it is drawn from along the glide)
         Transform moved;
         Vector3 movedWas;
+        Quaternion turnedWas;
         int drawnFrame = -1;
+        // (and the cameras of the stars and of the far scene in scaled space, which take the flight camera's look in their own
+        // LateUpdate, before this: turned with it while each draws, or the Mun, the sun's disc and the far ground stood where the
+        // new look has them while the near scene turned round under them)
+        Camera skyCam;
+        Quaternion skyCamWas;
 
         void BeforeDrawing(Camera c)
         {
-            if (glideAge < 0f || drawnFrame == Time.frameCount || c.targetTexture != null) return;
+            if (glideAge < 0f || c.targetTexture != null) return;
             FlightCamera cam = FlightCamera.fetch;
             if (cam == null) return;
-            drawnFrame = Time.frameCount;
-            moved = cam.transform; movedWas = moved.localPosition;
-            moved.position += glideOffset * (1f - Mathf.SmoothStep(0f, 1f, glideAge / GlideTime));
+            float left = 1f - Mathf.SmoothStep(0f, 1f, glideAge / GlideTime);
+            Quaternion turn = Quaternion.Slerp(Quaternion.identity, glideTurn, left);
+            if (drawnFrame != Time.frameCount)
+            {
+                drawnFrame = Time.frameCount;
+                moved = cam.transform; movedWas = moved.localPosition; turnedWas = moved.localRotation;
+                moved.position += glideOffset * left;
+                moved.rotation = turn * moved.rotation;
+            }
+            if (skyCam == null && (Names.Is(c, "GalaxyCamera") || Names.Is(c, "Camera ScaledSpace")))
+            {
+                skyCam = c; skyCamWas = c.transform.localRotation;
+                c.transform.rotation = turn * c.transform.rotation;
+            }
         }
 
         void AfterDrawing(Camera c)
         {
+            if (skyCam != null && c == skyCam) { skyCam.transform.localRotation = skyCamWas; skyCam = null; }
             if (moved == null || FlightCamera.fetch == null || c != FlightCamera.fetch.mainCamera) return;
-            moved.localPosition = movedWas;
+            moved.localPosition = movedWas; moved.localRotation = turnedWas;
             moved = null;
         }
 
@@ -292,6 +386,13 @@ namespace SteadyCamera
         }
 
         /// <summary>(Development build) how fast the craft spins, the game's wobble for it and what is kept, and how much the view turned frame to frame lately.</summary>
+        static int traceLeft;
+        static readonly System.Text.StringBuilder traceSaid = new System.Text.StringBuilder();
+        /// <summary>(Development build: the game's camera frame by frame, for the jump at a docking's latch: its target, mode, heading,
+        /// pitch, where it is from its target, the craft flown and its control point.)</summary>
+        public static string Trace(string frames) { traceSaid.Length = 0; traceLeft = int.TryParse((frames ?? "").Trim(), out int n) ? Mathf.Clamp(n, 1, 20000) : 600; return "tracing the camera for " + traceLeft + " frames"; }
+        public static string TraceRead() { traceLeft = 0; return traceSaid.ToString(); }
+
         public static string Says()
         {
             Steady s = last;
@@ -310,8 +411,8 @@ namespace SteadyCamera
             if (!HighLogic.LoadedSceneIsFlight) return;
             GUILayout.Label("The craft spins at " + (spin * Mathf.Rad2Deg).ToString("F0") + " degrees a second: the game would turn the view by " + gameTurn.ToString("F1") + " degrees for it" + (on ? "; held to " + ownTurn.ToString("F1") + "." : "."), Host.Small);
             GUILayout.Label("The game's wobble is a turn of the view, about the spin's own axis, as large as the spin times " + GameSettings.FLT_CAMERA_WOBBLE.ToString("F2") + " (its FLT_CAMERA_WOBBLE): in a fast spin it swings round with the craft and the picture shakes. " +
-                            (glide && on ? (lastGlide > 0f ? "The last change of what the camera follows: glided " + lastGlide.ToString("F1") + " m." : "No change of what the camera follows yet.") : "Changes of what the camera follows: at once, as the game has them."), Host.Small);
+                            (glide && on ? (lastGlide > 0f || lastGlideTurn > 0f ? "The last change of what the camera follows: glided " + lastGlide.ToString("F1") + " m, turning " + lastGlideTurn.ToString("F0") + " degrees." : "No change of what the camera follows yet.") : "Changes of what the camera follows: at once, as the game has them."), Host.Small);
         }
-        float lastGlide;
+        float lastGlide, lastGlideTurn;
     }
 }
