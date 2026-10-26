@@ -41,7 +41,7 @@ namespace SteadyCamera
     [KSPAddon(KSPAddon.Startup.Flight, false)]
     public sealed class Steady : MonoBehaviour
     {
-        public const string Version = "0.3.0";
+        public const string Version = "0.3.1";
 
         static Mod mod;
         static Toggle on, glide;
@@ -90,6 +90,7 @@ namespace SteadyCamera
             Camera.onPreCull += BeforeDrawing;
             Camera.onPostRender += AfterDrawing;
 #if DEV
+            Camera.onPreCull += TraceDrawing;
             last = this;
 #endif
         }
@@ -103,6 +104,9 @@ namespace SteadyCamera
             GiveShake();
             Camera.onPreCull -= BeforeDrawing;
             Camera.onPostRender -= AfterDrawing;
+#if DEV
+            Camera.onPreCull -= TraceDrawing;
+#endif
             if (moved != null) { moved.localPosition = movedWas; moved.localRotation = turnedWas; moved = null; }
             if (skyCam != null) { skyCam.transform.localRotation = skyCamWas; skyCam = null; }
             if (FlightCamera.fetch != null) FlightCamera.fetch.cameraWobbleSensitivity = GameSettings.FLT_CAMERA_WOBBLE;
@@ -175,7 +179,8 @@ namespace SteadyCamera
             Quaternion look = cam.transform.rotation;
             Transform now = cam.Target;
 #if DEV
-            if (traceLeft > 0)
+            bool traced = traceLeft > 0;
+            if (traced)
             {
                 traceLeft--;
                 Vessel av = FlightGlobals.ActiveVessel;
@@ -189,8 +194,8 @@ namespace SteadyCamera
                     foreach (System.Reflection.FieldInfo f in typeof(FlightCamera).GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic))
                         if (f.FieldType == typeof(float) || f.FieldType == typeof(Vector3) || f.FieldType == typeof(Quaternion) || f.FieldType == typeof(bool))
                             traceSaid.Append(' ').Append(f.Name).Append('=').Append(f.GetValue(cam));
-                traceSaid.Append('\n');
             }
+            Vector3 tracedAtWas = at; Quaternion tracedLookWas = look;
 #endif
             // (A docking's latch. As the two craft join, the game sets its camera's heading and pitch afresh against a frame of its own
             // that it then eases round (FlightCamera's frame of reference: in orbit the orbit's, the joined craft's another), the camera
@@ -209,13 +214,24 @@ namespace SteadyCamera
             }
             if (keepUntil >= Time.unscaledTime && on && cam.updateActive && now != null && now == keptTarget)
             {
-                // (and drawn from there each frame until the game's own placing, which eases round from the leap for a dozen frames
-                // after the angles are right, has come back to it)
+                // (and drawn from there each frame until the game's own placing has come back to it)
                 Vector3 want = now.position + keepOffset;
+                bool back = (at - want).sqrMagnitude <= 0.0025f;
                 try { cam.SetCamCoordsFromPosition(want); }
                 catch (Exception) { keepUntil = -1f; }
-                if ((at - want).sqrMagnitude > 0.0025f) { TurnSky(keepLook * Quaternion.Inverse(cam.transform.rotation)); cam.transform.position = want; cam.transform.rotation = keepLook; at = want; look = keepLook; }
-                else if (Time.frameCount - coupledFrame > 3) keepUntil = -1f;
+                // (SetCamCoordsFromPosition ends by turning the camera's pivot, which the camera hangs from: the camera is put back
+                // after it, its place and its turn, wherever that turn swung it. Until 2026-10-25 only a place found before the call
+                // was looked at, and on the latch's own frame the camera was drawn from where the pivot had swung it: one frame of
+                // another view (the PC's, on Direct3D; here too with the target craft left turning), and Scatterer's temporal
+                // anti-aliasing carried it into the next. The cameras of the stars and the far scene took their look from the game's
+                // camera this frame (ScaledCamera, FollowRot), which is `look`, already turned above on the latch's own frame.)
+                if (Quaternion.Angle(look, keepLook) > 0.05f) TurnSky(keepLook * Quaternion.Inverse(look));
+                if ((cam.transform.position - want).sqrMagnitude > 0.0025f || Quaternion.Angle(cam.transform.rotation, keepLook) > 0.05f)
+                {
+                    cam.transform.position = want; cam.transform.rotation = keepLook;
+                }
+                at = want; look = keepLook;
+                if (back && Time.frameCount - coupledFrame > 3) keepUntil = -1f;
             }
             else keepUntil = -1f;
             if (now != followed)
@@ -238,7 +254,33 @@ namespace SteadyCamera
             }
             lastPivot = at; lastLook = look;
             lastHdg = cam.camHdg; lastPitch = cam.camPitch; lastOffset = now != null ? at - now.position : Vector3.zero;
+#if DEV
+            if (traced)
+            {
+                // (and what this step did to the camera the game had placed: where it is left to be drawn from)
+                traceSaid.Append(" | left moved ").Append((cam.transform.position - tracedAtWas).magnitude.ToString("F2")).Append(" m turned ")
+                         .Append(Quaternion.Angle(cam.transform.rotation, tracedLookWas).ToString("F1")).Append(" keep ").Append(keepUntil >= Time.unscaledTime ? "on" : "off").Append('\n');
+                drawTraceFrame = Time.frameCount; drawTraceAt = cam.transform.position; drawTraceLook = cam.transform.rotation;
+            }
+#endif
         }
+
+#if DEV
+        // (development build, with the trace: where the main camera is when it is drawn, against where this mod's late step left it.
+        // Anything that moves it in between, after the last of the game's late stages, shows here.)
+        int drawTraceFrame = -1;
+        Vector3 drawTraceAt;
+        Quaternion drawTraceLook;
+        void TraceDrawing(Camera c)
+        {
+            FlightCamera cam = FlightCamera.fetch;
+            if (drawTraceFrame != Time.frameCount || cam == null || c != cam.mainCamera) return;
+            drawTraceFrame = -1;
+            traceSaid.Append(Time.frameCount).Append(" drawn: moved ").Append((cam.transform.position - drawTraceAt).magnitude.ToString("F2")).Append(" m turned ")
+                     .Append(Quaternion.Angle(cam.transform.rotation, drawTraceLook).ToString("F1")).Append(" since the late step").Append(c.targetTexture != null ? " (into a texture)" : "")
+                     .Append(glideAge >= 0f ? " GLIDING" : "").Append('\n');
+        }
+#endif
 
         // (the frame two parts were last joined, as at a docking's latch: see Late)
         int coupledFrame = -100, joinsKept;
@@ -392,6 +434,29 @@ namespace SteadyCamera
         /// pitch, where it is from its target, the craft flown and its control point.)</summary>
         public static string Trace(string frames) { traceSaid.Length = 0; traceLeft = int.TryParse((frames ?? "").Trim(), out int n) ? Mathf.Clamp(n, 1, 20000) : 600; return "tracing the camera for " + traceLeft + " frames"; }
         public static string TraceRead() { traceLeft = 0; return traceSaid.ToString(); }
+
+        /// <summary>(Development build) how the flight camera's cameras hang: each one's parent, its pose under it, and whether it is the
+        /// game's camera object itself.</summary>
+        public static string Cameras()
+        {
+            FlightCamera cam = FlightCamera.fetch;
+            if (cam == null) return "no flight camera";
+            var s = new System.Text.StringBuilder();
+            s.Append("FlightCamera on ").Append(cam.name).Append(" under ").Append(cam.transform.parent != null ? cam.transform.parent.name : "none").Append("; main ").Append(cam.mainCamera != null ? cam.mainCamera.name : "none").Append('\n');
+            foreach (Camera c in cam.cameras)
+                if (c != null) s.Append(c.name).Append(" enabled ").Append(c.enabled).Append(c.transform == cam.transform ? " IS the camera object" : " under " + (c.transform.parent != null ? c.transform.parent.name : "none"))
+                                .Append(" local ").Append(c.transform.localPosition.ToString("F3")).Append(' ').Append(c.transform.localRotation.eulerAngles.ToString("F2"))
+                                .Append(" from the camera object ").Append((c.transform.position - cam.transform.position).magnitude.ToString("F3")).Append(" m ").Append(Quaternion.Angle(c.transform.rotation, cam.transform.rotation).ToString("F2")).Append(" deg\n");
+            foreach (Camera c in Camera.allCameras)
+            {
+                s.Append("  drawn: ").Append(c.name).Append(" depth ").Append(c.depth).Append(c.targetTexture != null ? " into a texture" : "")
+                 .Append(" under ").Append(c.transform.parent != null ? c.transform.parent.name : "none")
+                 .Append(" turned from the flight camera ").Append(Quaternion.Angle(c.transform.rotation, cam.transform.rotation).ToString("F2")).Append(" deg;");
+                foreach (MonoBehaviour b in c.GetComponents<MonoBehaviour>()) if (b != null) s.Append(' ').Append(b.GetType().Name);
+                s.Append('\n');
+            }
+            return s.ToString();
+        }
 
         public static string Says()
         {

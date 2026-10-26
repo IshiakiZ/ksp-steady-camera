@@ -24,8 +24,9 @@ USE
   switch the mod off and the camera is the game's own.
 
 WHERE IT WORKS
-  Made and tried on a Mac; 0.1.0 was tried on Windows 11 too (a craft spinning in orbit: the
-  wobble held back). What 0.2.0 adds has been run on the Mac only so far (it is the same
-  code there, with no shaders). Nobody has run it on Linux yet.
+  Made and tried on a Mac. On Windows 11: 0.1.0 (a craft spinning in orbit: the wobble held
+  back), the glide at a switch (0.3.0) and the view kept at a docking's latch (0.3.1); the
+  camera shake held (0.2.0) has run on the Mac only so far (it is the same code there, with no
+  shaders). Nobody has run it on Linux yet.
 
 Everything else: https://github.com/IshiakiZ/ksp-steady-camera

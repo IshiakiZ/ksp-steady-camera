@@ -31,7 +31,7 @@ turned the view for it, and how far the last glide went.
 
 ## Works on
 
-Mac: tried. Windows 11: 0.1.0 tried (a craft spinning in orbit: the wobble held back); the glide at a switch run there (2026-10-25, clean); 0.3.0's view kept at a docking's latch, the Mac only so far.
+Mac: tried. Windows 11: 0.1.0 tried (a craft spinning in orbit: the wobble held back); the glide at a switch run there (2026-10-25, clean); the view kept at a docking's latch tried there (0.3.1, 2026-10-25: docked, no flash).
 Linux: never run.
 
 **More:** [how it works](https://github.com/IshiakiZ/ksp-steady-camera/wiki/How-it-works) and the rest of the [wiki](https://github.com/IshiakiZ/ksp-steady-camera/wiki).
