@@ -23,7 +23,8 @@ taken over, a part aimed at), the game puts it there at once and the picture jum
 view is kept where it was. **Engines' shake kept** and **In the cockpit** (0.2.0): how much of the game's own
 camera shake (its engines' rumble, a solid booster's most, and the air's buffeting) is kept, outside and in the cockpit
 view (1, as the game has it, as installed). The window also says how fast the craft is spinning, how far the game would have
-turned the view for it, and how far the last glide went.
+turned the view for it, and how far the last glide went. With Keystone 0.11.0, two finer details in its Advanced view: how
+long the glide takes and how far it may go. [All of them](https://github.com/IshiakiZ/ksp-steady-camera/wiki/Settings).
 
 ## Good to know
 

@@ -4,7 +4,7 @@ using UnityEngine;
 
 #if !DEV
 [assembly: KSPAssembly("SteadyCamera", 0, 1)]
-[assembly: KSPAssemblyDependency("Keystone", 0, 4)]
+[assembly: KSPAssemblyDependency("Keystone", 0, 11)]
 #endif
 
 namespace SteadyCamera
@@ -41,7 +41,7 @@ namespace SteadyCamera
     [KSPAddon(KSPAddon.Startup.Flight, false)]
     public sealed class Steady : MonoBehaviour
     {
-        public const string Version = "0.3.1";
+        public const string Version = "0.4.0";
 
         static Mod mod;
         static Toggle on, glide;
@@ -77,7 +77,21 @@ namespace SteadyCamera
             shakeOut = mod.Slider("shakeout", "Engines' shake kept", 1f, 0f, 1f, "", 2, "The game shakes the camera with its engines' rumble (solid boosters most) and the air's buffeting (its own camera effects, CAMERA_FX_EXTERNAL in its settings): how much of that is kept outside the craft. 1 as the game has it, 0 none. Your settings file is not touched.");
             shakeIn = mod.Slider("shakein", "In the cockpit", 1f, 0f, 1f, "", 2, "The same in the cockpit view (CAMERA_FX_INTERNAL), where it sways the view against the instruments. 1 as the game has it, 0 none.");
             glide = mod.Toggle("glide", "Glide to what it follows next", true, "When the camera changes what it follows (a kerbal stepping out, another craft near by taken over, a part aimed at), the game puts it there at once and the picture jumps. With this on it glides there over a moment instead (not over more than 150 m: further, it still goes at once).");
+            Fine(true);
+            glideTime = mod.Slider("glidetime", "The glide takes", GlideTime, 0.1f, 3f, " s", 1, "How long the camera takes to glide to what it follows next, easing in and out.");
+            glideMost = mod.Slider("glidemost", "Glided no further than", GlideMost, 10f, 1000f, " m", 0, "From further than this the camera goes to what it follows next at once, as the game has it.");
+            Fine(false);
         }
+
+        // (the fine details, on the page in Keystone's Advanced view; each as installed does what the mod did before them)
+        static Slider glideTime, glideMost;
+        static float Of(Slider slider, float installed) => slider != null ? (float)slider : installed;
+
+        /// <summary>The settings added after Fine(true) are fine details: on the page only in Keystone's Advanced view, until Fine(false).
+        /// (Keystone 0.11.0 has the two views; an older one has neither call, and shows the fine details with the rest.)</summary>
+        static void Fine(bool fine) { try { if (fine) Advanced(mod); else Simple(mod); } catch (Exception) { } }
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)] static void Advanced(Mod page) => page.Advanced();
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)] static void Simple(Mod page) => page.Simple();
 
         void Awake()
         {
@@ -238,7 +252,7 @@ namespace SteadyCamera
             {
                 Vector3 jump = lastPivot - at;
                 float turned = Quaternion.Angle(lastLook, look);
-                if (followed != null && on && glide && (jump.magnitude > 0.05f || turned > 0.5f) && jump.magnitude < GlideMost)
+                if (followed != null && on && glide && (jump.magnitude > 0.05f || turned > 0.5f) && jump.magnitude < Of(glideMost, GlideMost))
                 {
                     glideOffset = jump;
                     // (what, put before the new look, gives the old one)
@@ -250,7 +264,7 @@ namespace SteadyCamera
             else if (glideAge >= 0f)
             {
                 glideAge += Mathf.Min(Time.unscaledDeltaTime, 0.1f);
-                if (glideAge >= GlideTime || !on || !glide) glideAge = -1f;
+                if (glideAge >= Of(glideTime, GlideTime) || !on || !glide) glideAge = -1f;
             }
             lastPivot = at; lastLook = look;
             lastHdg = cam.camHdg; lastPitch = cam.camPitch; lastOffset = now != null ? at - now.position : Vector3.zero;
@@ -314,7 +328,7 @@ namespace SteadyCamera
             if (glideAge < 0f || c.targetTexture != null) return;
             FlightCamera cam = FlightCamera.fetch;
             if (cam == null) return;
-            float left = 1f - Mathf.SmoothStep(0f, 1f, glideAge / GlideTime);
+            float left = 1f - Mathf.SmoothStep(0f, 1f, glideAge / Of(glideTime, GlideTime));
             Quaternion turn = Quaternion.Slerp(Quaternion.identity, glideTurn, left);
             if (drawnFrame != Time.frameCount)
             {
